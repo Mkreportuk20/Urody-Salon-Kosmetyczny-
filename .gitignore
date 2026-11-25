@@ -9,3 +9,6 @@ venv/
 
 # PyCharm
 .idea/
+
+# Local appointment data
+appointments.json

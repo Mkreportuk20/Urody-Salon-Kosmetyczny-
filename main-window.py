@@ -4,6 +4,7 @@ from tkinter import messagebox
 
 from services import SERVICES
 from calculator import open_calculator
+from modules.appointment_planner import open_appointment_planner
 
 
 class UrodyApp:
@@ -151,10 +152,7 @@ class UrodyApp:
 
     # APPOINTMENT PLANNER
     def show_planner(self):
-        messagebox.showinfo(
-            "Planer wizyty",
-            "Planer wizyt będzie dostępny wkrótce."
-        )
+        open_appointment_planner(self.root)
 
     # BEAUTY GUIDE
     def show_guide(self):
