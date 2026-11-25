@@ -1,183 +1,413 @@
 
-import tkinter as tk
-from tkinter import messagebox
+"""Single-window Urody salon application."""
 
-from services import SERVICES
+from datetime import datetime, timedelta
+import tkinter as tk
+
 from calculator import open_calculator
+from modules.appointment_logic import load_appointments
+from modules.appointment_planner import AppointmentPlanner
+from services import SERVICES
+
+
+BG = "#FFF5F7"
+PINK = "#D98CA5"
+PINK_ACTIVE = "#C47791"
+PLUM = "#713B50"
+MUTED = "#65545B"
+WHITE = "#FFFFFF"
+BORDER = "#EBD5DD"
+SUCCESS_BG = "#EEF8EE"
+SUCCESS_FG = "#326B45"
+ERROR_BG = "#FFF0F0"
+ERROR_FG = "#9B3D4A"
 
 
 class UrodyApp:
+    NAV_ITEMS = (
+        ("home", "Strona główna"),
+        ("services", "Katalog usług"),
+        ("calculator", "Kalkulator cen"),
+        ("planner", "Planer wizyty"),
+        ("guide", "Poradnik"),
+        ("about", "O salonie"),
+    )
 
     def __init__(self, root):
         self.root = root
-
-        self.root.title("URODY - Salon Kosmetyczny")
-        self.root.geometry("900x600")
-        self.root.minsize(750, 500)
-        self.root.configure(bg="#FFF5F7")
+        self.root.title("URODY — Salon Kosmetyczny")
+        self.root.geometry("1180x760")
+        self.root.minsize(1020, 690)
+        self.root.configure(bg=BG)
+        self.current_page = "home"
+        self.flash_message = ""
+        self.nav_buttons = {}
 
         self.create_header()
-        self.create_content()
+        self.create_shell()
+        self.show_page("home")
 
-    # HEADER
     def create_header(self):
-        header = tk.Frame(
-            self.root,
-            bg="#D98CA5",
-            height=110
-        )
+        header = tk.Frame(self.root, bg=PINK, height=86)
         header.pack(fill="x")
         header.pack_propagate(False)
 
         tk.Label(
             header,
             text="URODY",
-            font=("Arial", 30, "bold"),
-            bg="#D98CA5",
-            fg="white"
-        ).pack(pady=(15, 0))
-
+            font=("Arial", 25, "bold"),
+            bg=PINK,
+            fg=WHITE,
+        ).pack(anchor="w", padx=28, pady=(13, 0))
         tk.Label(
             header,
             text="SALON KOSMETYCZNY",
-            font=("Arial", 12),
-            bg="#D98CA5",
-            fg="white"
-        ).pack()
+            font=("Arial", 10, "bold"),
+            bg=PINK,
+            fg=WHITE,
+        ).pack(anchor="w", padx=30, pady=(0, 8))
 
-    # MAIN CONTENT
-    def create_content(self):
-        content = tk.Frame(
-            self.root,
-            bg="#FFF5F7"
-        )
-        content.pack(
-            expand=True,
-            fill="both",
-            padx=30,
-            pady=25
-        )
+    def create_shell(self):
+        shell = tk.Frame(self.root, bg=BG)
+        shell.pack(fill="both", expand=True)
+
+        sidebar = tk.Frame(shell, bg=WHITE, width=210)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
 
         tk.Label(
-            content,
-            text="Witamy w salonie Urody!",
-            font=("Arial", 24, "bold"),
-            bg="#FFF5F7",
-            fg="#713B50"
-        ).pack(pady=15)
+            sidebar,
+            text="MENU",
+            font=("Arial", 10, "bold"),
+            bg=WHITE,
+            fg=MUTED,
+        ).pack(anchor="w", padx=20, pady=(24, 12))
 
-        tk.Label(
-            content,
-            text="Wybierz interesującą Cię funkcję:",
-            font=("Arial", 13),
-            bg="#FFF5F7",
-            fg="#555555"
-        ).pack(pady=10)
-
-        buttons = [
-            ("Katalog usług", self.show_services),
-            ("Kalkulator cen", self.show_calculator),
-            ("Planer wizyty", self.show_planner),
-            ("Poradnik pielęgnacyjny", self.show_guide),
-            ("Informacje o salonie", self.show_about)
-        ]
-
-        for text, command in buttons:
-            tk.Button(
-                content,
-                text=text,
-                command=command,
-                font=("Arial", 13, "bold"),
-                bg="#D98CA5",
-                fg="white",
-                activebackground="#C47791",
-                activeforeground="white",
-                width=28,
-                height=2,
+        for page, label in self.NAV_ITEMS:
+            button = tk.Button(
+                sidebar,
+                text=label,
+                command=lambda selected=page: self.show_page(selected),
+                font=("Arial", 11, "bold"),
+                anchor="w",
+                padx=16,
+                pady=12,
+                bd=0,
                 relief="flat",
-                cursor="hand2"
-            ).pack(pady=5)
+                cursor="hand2",
+            )
+            button.pack(fill="x", padx=10, pady=3)
+            self.nav_buttons[page] = button
 
-    # SERVICES CATALOG
-    def show_services(self):
-        window = tk.Toplevel(self.root)
+        self.page_area = tk.Frame(shell, bg=BG)
+        self.page_area.pack(side="left", fill="both", expand=True)
+        self.page_container = tk.Frame(self.page_area, bg=BG)
+        self.page_container.pack(fill="both", expand=True, padx=22, pady=20)
 
-        window.title("Katalog usług - URODY")
-        window.geometry("500x430")
-        window.configure(bg="#FFF5F7")
+    def _set_navigation_state(self):
+        for page, button in self.nav_buttons.items():
+            selected = page == self.current_page
+            button.configure(
+                bg=PINK if selected else WHITE,
+                fg=WHITE if selected else PLUM,
+                activebackground=PINK_ACTIVE if selected else BG,
+                activeforeground=WHITE if selected else PLUM,
+            )
+
+    def _clear_page(self):
+        for child in self.page_container.winfo_children():
+            child.destroy()
+
+    def show_page(self, page):
+        self.current_page = page
+        self._set_navigation_state()
+        self._clear_page()
+
+        pages = {
+            "home": self.show_home_page,
+            "services": self.show_services,
+            "calculator": self.show_calculator,
+            "planner": self.show_planner,
+            "guide": self.show_guide,
+            "about": self.show_about,
+        }
+        pages[page]()
+
+    def _page_heading(self, title, subtitle=""):
+        tk.Label(
+            self.page_container,
+            text=title,
+            font=("Arial", 22, "bold"),
+            bg=BG,
+            fg=PLUM,
+        ).pack(anchor="w", pady=(0, 4))
+        if subtitle:
+            tk.Label(
+                self.page_container,
+                text=subtitle,
+                font=("Arial", 10),
+                bg=BG,
+                fg=MUTED,
+            ).pack(anchor="w", pady=(0, 16))
+
+    def _card(self, parent, padding=18):
+        card = tk.Frame(
+            parent,
+            bg=WHITE,
+            highlightbackground=BORDER,
+            highlightthickness=1,
+            padx=padding,
+            pady=padding,
+        )
+        return card
+
+    def _inline_banner(self, parent, text, *, error=False):
+        tk.Label(
+            parent,
+            text=text,
+            font=("Arial", 10, "bold"),
+            bg=ERROR_BG if error else SUCCESS_BG,
+            fg=ERROR_FG if error else SUCCESS_FG,
+            padx=12,
+            pady=10,
+            anchor="w",
+            justify="left",
+            wraplength=760,
+        ).pack(fill="x", pady=(0, 14))
+
+    def show_home_page(self):
+        self._page_heading(
+            "Witamy w salonie Urody!",
+            "Wybierz funkcję lub sprawdź najbliższą zaplanowaną wizytę.",
+        )
+
+        if self.flash_message:
+            self._inline_banner(self.page_container, self.flash_message)
+            self.flash_message = ""
+
+        card = self._card(self.page_container, padding=22)
+        card.pack(fill="x", pady=(0, 16))
+        tk.Label(
+            card,
+            text="Najbliższa wizyta",
+            font=("Arial", 16, "bold"),
+            bg=WHITE,
+            fg=PLUM,
+        ).pack(anchor="w", pady=(0, 12))
+
+        appointment, storage_error = self._next_appointment()
+        if storage_error:
+            tk.Label(
+                card,
+                text=f"Nie udało się wczytać zapisanych wizyt: {storage_error}",
+                font=("Arial", 10),
+                bg=WHITE,
+                fg=ERROR_FG,
+                wraplength=700,
+                justify="left",
+            ).pack(anchor="w")
+        elif appointment is None:
+            tk.Label(
+                card,
+                text="Brak zaplanowanych wizyt.",
+                font=("Arial", 11),
+                bg=WHITE,
+                fg=MUTED,
+            ).pack(anchor="w")
+        else:
+            service_names = ", ".join(
+                service.get("name", "Usługa")
+                for service in appointment["services"]
+                if isinstance(service, dict)
+            )
+            end_time = appointment["start"] + timedelta(
+                minutes=appointment["data"].get("total_duration", 0)
+            )
+            tk.Label(
+                card,
+                text=(
+                    f"{appointment['start']:%d.%m.%Y}  •  "
+                    f"{appointment['start']:%H:%M}–{end_time:%H:%M}"
+                ),
+                font=("Arial", 13, "bold"),
+                bg=WHITE,
+                fg=PLUM,
+            ).pack(anchor="w")
+            tk.Label(
+                card,
+                text=(
+                    f"{service_names}  ·  "
+                    f"{appointment['data'].get('total_price', 0)} PLN"
+                ),
+                font=("Arial", 11),
+                bg=WHITE,
+                fg=MUTED,
+            ).pack(anchor="w", pady=(5, 0))
+
+        self._action_button(
+            self.page_container,
+            "Zaplanuj wizytę",
+            lambda: self.show_page("planner"),
+        ).pack(anchor="w", pady=(0, 18))
 
         tk.Label(
-            window,
-            text="KATALOG USŁUG",
-            font=("Arial", 22, "bold"),
-            bg="#FFF5F7",
-            fg="#713B50"
-        ).pack(pady=20)
+            self.page_container,
+            text="Nasze funkcje",
+            font=("Arial", 15, "bold"),
+            bg=BG,
+            fg=PLUM,
+        ).pack(anchor="w", pady=(0, 10))
+        actions = tk.Frame(self.page_container, bg=BG)
+        actions.pack(fill="x")
+        for page, label in self.NAV_ITEMS[1:4]:
+            self._action_button(
+                actions,
+                label,
+                lambda selected=page: self.show_page(selected),
+            ).pack(side="left", padx=(0, 10))
 
+    def _action_button(self, parent, label, command):
+        return tk.Button(
+            parent,
+            text=label,
+            command=command,
+            font=("Arial", 10, "bold"),
+            bg=PINK,
+            fg=WHITE,
+            activebackground=PINK_ACTIVE,
+            activeforeground=WHITE,
+            bd=0,
+            padx=18,
+            pady=11,
+            cursor="hand2",
+        )
+
+    def _next_appointment(self):
+        try:
+            appointments = load_appointments()
+        except (OSError, ValueError) as error:
+            return None, str(error)
+
+        now = datetime.now().replace(second=0, microsecond=0)
+        upcoming = []
+        for appointment in appointments:
+            if not isinstance(appointment, dict):
+                continue
+            try:
+                start = datetime.strptime(
+                    f"{appointment['date']} {appointment['time']}",
+                    "%d.%m.%Y %H:%M",
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if start >= now:
+                upcoming.append((start, appointment))
+
+        if not upcoming:
+            return None, None
+
+        start, appointment = min(upcoming, key=lambda item: item[0])
+        return {"start": start, "data": appointment, "services": appointment.get("services", [])}, None
+
+    def show_services(self):
+        self._page_heading("Katalog usług", "Poznaj ceny i przewidywany czas zabiegów.")
         for service in SERVICES:
-
-            frame = tk.Frame(
-                window,
-                bg="white",
-                padx=15,
-                pady=10
-            )
-            frame.pack(
-                fill="x",
-                padx=25,
-                pady=6
-            )
-
+            card = self._card(self.page_container, padding=16)
+            card.pack(fill="x", pady=5)
+            row = tk.Frame(card, bg=WHITE)
+            row.pack(fill="x")
             tk.Label(
-                frame,
+                row,
                 text=service["name"],
-                font=("Arial", 14, "bold"),
-                bg="white",
-                fg="#713B50"
-            ).pack(anchor="w")
-
+                font=("Arial", 13, "bold"),
+                bg=WHITE,
+                fg=PLUM,
+            ).pack(side="left")
             tk.Label(
-                frame,
-                text=f'Cena: {service["price"]} PLN | '
-                     f'Czas: {service["duration"]} min',
+                row,
+                text=f"{service['price']} PLN  ·  {service['duration']} min",
                 font=("Arial", 11),
-                bg="white",
-                fg="#555555"
-            ).pack(anchor="w")
+                bg=WHITE,
+                fg=MUTED,
+            ).pack(side="right")
 
-    # PRICE CALCULATOR
     def show_calculator(self):
-        open_calculator(self.root)
+        open_calculator(self.page_container)
 
-    # APPOINTMENT PLANNER
     def show_planner(self):
-        messagebox.showinfo(
-            "Planer wizyty",
-            "Planer wizyt będzie dostępny wkrótce."
+        AppointmentPlanner(
+            self.page_container,
+            on_saved=self._on_appointment_saved,
         )
 
-    # BEAUTY GUIDE
+    def _on_appointment_saved(self, appointment):
+        self.flash_message = (
+            f"Wizyta zapisana: {appointment['date']} o {appointment['time']}."
+        )
+        self.show_page("home")
+
     def show_guide(self):
-        messagebox.showinfo(
+        self._page_heading(
             "Poradnik pielęgnacyjny",
-            "Porady pielęgnacyjne będą dostępne wkrótce."
+            "Kilka prostych wskazówek przed wizytą w salonie.",
         )
+        tips = (
+            ("Przed zabiegiem", "Przyjdź kilka minut wcześniej i poinformuj kosmetologa o alergiach."),
+            ("Pielęgnacja skóry", "Stosuj delikatne kosmetyki i pamiętaj o codziennej ochronie SPF."),
+            ("Po wizycie", "Przestrzegaj zaleceń specjalisty i unikaj drażniących produktów."),
+        )
+        for title, description in tips:
+            card = self._card(self.page_container)
+            card.pack(fill="x", pady=6)
+            tk.Label(
+                card,
+                text=title,
+                font=("Arial", 13, "bold"),
+                bg=WHITE,
+                fg=PLUM,
+            ).pack(anchor="w")
+            tk.Label(
+                card,
+                text=description,
+                font=("Arial", 10),
+                bg=WHITE,
+                fg=MUTED,
+                wraplength=720,
+                justify="left",
+            ).pack(anchor="w", pady=(5, 0))
 
-    # ABOUT SALON
     def show_about(self):
-        messagebox.showinfo(
-            "O salonie",
-            "URODY - Salon Kosmetyczny\n\n"
-            "Godziny otwarcia:\n"
-            "Poniedziałek - Piątek, 9:00-18:00\n\n"
-            "Zapraszamy!"
-        )
+        self._page_heading("O salonie", "URODY — miejsce na chwilę relaksu i pielęgnacji.")
+        card = self._card(self.page_container, padding=22)
+        card.pack(fill="x")
+        tk.Label(
+            card,
+            text="Godziny otwarcia",
+            font=("Arial", 14, "bold"),
+            bg=WHITE,
+            fg=PLUM,
+        ).pack(anchor="w")
+        tk.Label(
+            card,
+            text="Poniedziałek–piątek, 09:00–18:00",
+            font=("Arial", 11),
+            bg=WHITE,
+            fg=MUTED,
+        ).pack(anchor="w", pady=(5, 15))
+        tk.Label(
+            card,
+            text="Zapraszamy na manicure, pedicure, zabiegi pielęgnacyjne i stylizację brwi.",
+            font=("Arial", 10),
+            bg=WHITE,
+            fg=MUTED,
+            wraplength=700,
+            justify="left",
+        ).pack(anchor="w")
 
 
-# APPLICATION START
 def main():
     root = tk.Tk()
-    app = UrodyApp(root)
+    UrodyApp(root)
     root.mainloop()
 
 
